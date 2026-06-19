@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voice Transcriber</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #09090b; --surface: #18181b; --border: #27272a;
+    --text: #f4f4f5; --sub: #71717a; --chip: #27272a;
+    --input-bg: #27272a; --hover: #27272a;
+    --indigo: #6366f1; --indigo-d: #4f46e5;
+    --red: #ef4444; --emerald: #10b981;
+  }
+  body.light {
+    --bg: #f4f4f5; --surface: #ffffff; --border: #e4e4e7;
+    --text: #18181b; --sub: #71717a; --chip: #f4f4f5;
+    --input-bg: #ffffff; --hover: #f4f4f5;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100vh; transition: background .2s, color .2s; }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-icon { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,#6366f1,#8b5cf6); display: flex; align-items: center; justify-content: center; }
+  .brand-icon svg { width: 20px; height: 20px; color: #fff; }
+  .brand-title { font-size: 17px; font-weight: 600; line-height: 1.2; }
+  .brand-sub { font-size: 12px; color: var(--sub); }
+  #themeBtn { padding: 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: flex; }
+  #themeBtn:hover { background: var(--hover); }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+
+  /* Controls row */
+  .ctrl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .btn-main { display: flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 12px; border: none; font-size: 15px; font-weight: 500; color: #fff; cursor: pointer; background: var(--indigo); transition: transform .1s, background .15s; }
+  .btn-main:active { transform: scale(.96); }
+  .btn-main.stop { background: var(--red); }
+  .btn-main.ptt-hold { background: var(--red); }
+
+  /* Meter */
+  .meter { display: flex; align-items: flex-end; gap: 3px; height: 36px; padding: 0 4px; }
+  .bar { width: 3px; border-radius: 2px; background: var(--chip); transition: height .07s, background .07s; }
+  .bar.on { background: var(--indigo); }
+
+  /* Mode toggle */
+  .btn-mode { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--sub); font-size: 13px; cursor: pointer; transition: border-color .15s, color .15s; }
+  .btn-mode.active { border-color: var(--indigo); color: var(--indigo); }
+  .btn-mode:hover { background: var(--hover); }
+
+  /* Selects */
+  .selects { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+  .selects label { font-size: 13px; color: var(--sub); }
+  select { font-size: 13px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); outline: none; cursor: pointer; }
+  select:focus { border-color: var(--indigo); }
+
+  /* Speaker picker */
+  .speaker-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .speaker-row span { font-size: 12px; color: var(--sub); }
+  .spk-chip { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; border: 1px solid transparent; font-size: 12px; font-weight: 500; cursor: pointer; background: var(--chip); color: var(--sub); transition: all .15s; }
+  .spk-chip.active { border-color: currentColor; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Speaker colors */
+  .c0 { color: #6366f1; } .d0 { background: #6366f1; } .s0 { background: rgba(99,102,241,.12); }
+  .c1 { color: #10b981; } .d1 { background: #10b981; } .s1 { background: rgba(16,185,129,.12); }
+  .c2 { color: #f59e0b; } .d2 { background: #f59e0b; } .s2 { background: rgba(245,158,11,.12); }
+  .c3 { color: #ec4899; } .d3 { background: #ec4899; } .s3 { background: rgba(236,72,153,.12); }
+  .c4 { color: #8b5cf6; } .d4 { background: #8b5cf6; } .s4 { background: rgba(139,92,246,.12); }
+  .c5 { color: #06b6d4; } .d5 { background: #06b6d4; } .s5 { background: rgba(6,182,212,.12); }
+
+  /* Transcript */
+  #transcript { height: 46vh; min-height: 260px; overflow-y: auto; }
+  .empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--sub); text-align: center; gap: 10px; }
+  .empty svg { opacity: .4; }
+  .empty p { font-size: 14px; } .empty small { font-size: 12px; opacity: .7; }
+
+  .seg { display: flex; gap: 10px; margin-bottom: 14px; position: relative; }
+  .seg:hover .seg-actions { opacity: 1; }
+  .seg-label { flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; height: fit-content; }
+  .seg-body { flex: 1; min-width: 0; }
+  .seg-text { font-size: 14px; line-height: 1.65; word-break: break-word; }
+  .seg-time { font-size: 10px; color: var(--sub); margin-left: 6px; opacity: 0; transition: opacity .15s; }
+  .seg:hover .seg-time { opacity: 1; }
+  .seg-actions { opacity: 0; display: flex; gap: 4px; flex-shrink: 0; margin-top: 2px; transition: opacity .15s; }
+  .seg-actions button { background: transparent; border: none; cursor: pointer; color: var(--sub); padding: 4px; border-radius: 6px; display: flex; }
+  .seg-actions button:hover { background: var(--hover); }
+  .del-btn:hover { color: var(--red) !important; }
+
+  textarea.edit-area { width: 100%; font-size: 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); padding: 8px 10px; resize: vertical; outline: none; font-family: inherit; }
+  textarea.edit-area:focus { border-color: var(--indigo); }
+  .edit-btns { display: flex; gap: 8px; margin-top: 6px; }
+  .edit-btns button { font-size: 12px; padding: 5px 12px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .save-btn { background: var(--emerald); color: #fff; }
+  .cancel-btn { background: var(--chip); color: var(--sub); }
+
+  .interim { font-size: 14px; line-height: 1.65; color: var(--sub); font-style: italic; word-break: break-word; }
+  .interim .dot-pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  /* Footer */
+  .footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .stats { font-size: 12px; color: var(--sub); }
+  .stats button { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; margin-left: 10px; }
+  .stats button:hover { text-decoration: underline; }
+  .exports { display: flex; flex-wrap: wrap; gap: 8px; }
+  .exp-btn { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; transition: background .15s; }
+  .exp-btn:hover:not(:disabled) { background: var(--hover); }
+  .exp-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .exp-btn svg { width: 15px; height: 15px; }
+
+  .notice { font-size: 11px; color: var(--sub); text-align: center; margin-top: 16px; }
+
+  /* Unsupported */
+  .unsupported { height: 70vh; display: flex; align-items: center; justify-content: center; }
+  .unsupported-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 36px; max-width: 420px; text-align: center; }
+  .unsupported-card h2 { margin: 16px 0 8px; font-size: 18px; }
+  .unsupported-card p { font-size: 14px; color: var(--sub); line-height: 1.6; }
+
+  @media (max-width: 480px) { .wrap { padding: 14px 10px; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </div>
+      <div>
+        <div class="brand-title">Voice Transcriber</div>
+        <div class="brand-sub">Speak naturally · live multilingual text</div>
+      </div>
+    </div>
+    <button id="themeBtn" title="Toggle theme">
+      <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+
+  <div id="unsupported" style="display:none" class="unsupported">
+    <div class="unsupported-card">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      <h2>Browser not supported</h2>
+      <p>This tool requires the <b>Web Speech API</b>.<br>Please open this file in <b>Google Chrome</b> or <b>Microsoft Edge</b> on desktop or Android.</p>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- Controls card -->
+    <div class="card">
+      <div class="ctrl-row">
+        <button id="mainBtn" class="btn-main">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          <span id="mainBtnLabel">Start Listening</span>
+        </button>
+
+        <div class="meter" id="meter"></div>
+
+        <button id="modeBtn" class="btn-mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="modeBtnLabel">Continuous</span>
+        </button>
+      </div>
+
+      <div class="selects">
+        <label>Language</label>
+        <select id="langSel"></select>
+        <label style="margin-left:6px">Speakers</label>
+        <select id="spkCount">
+          <option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+        </select>
+      </div>
+
+      <div class="speaker-row">
+        <span>Speaking now:</span>
+        <div id="spkPicker"></div>
+      </div>
+    </div>
+
+    <!-- Transcript card -->
+    <div class="card" id="transcript">
+      <div class="empty" id="emptyState">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        <p>Pick your language, choose who's speaking,<br>then hit <b>Start Listening</b>.</p>
+        <small>Tap a speaker chip on any line to fix its label.</small>
+      </div>
+      <div id="segList"></div>
+      <div id="interimLine" style="display:none" class="seg">
+        <div id="interimLabel" class="seg-label s0 c0"></div>
+        <div class="interim"><span class="dot-pulse d0" id="interimDot"></span><span id="interimText"></span></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="stats" id="stats">0 lines · 0 words</div>
+      <div class="exports">
+        <button class="exp-btn" id="copyBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copyLabel">Copy</span>
+        </button>
+        <button class="exp-btn" id="txtBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> .txt
+        </button>
+        <button class="exp-btn" id="srtBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 9h10M7 12h10M7 15h4"/></svg> .srt
+        </button>
+        <button class="exp-btn" id="mdBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/></svg> .md
+        </button>
+      </div>
+    </div>
+
+    <div class="notice">Open this file directly in Chrome or Edge (file://) · Mic access required · audio is processed by your browser's recognition service</div>
+  </div>
+</div>
+
+<script>
+const LANGS = [
+  ["en-US","English (US)"],["en-IN","English (India)"],
+  ["te-IN","Telugu — తెలుగు"],["hi-IN","Hindi — हिन्दी"],
+  ["ta-IN","Tamil — தமிழ்"],["kn-IN","Kannada — ಕನ್ನಡ"],
+  ["ml-IN","Malayalam — മലയാളം"],["mr-IN","Marathi — मराठी"],
+  ["bn-IN","Bengali — বাংলা"],["gu-IN","Gujarati — ગુજરાતી"],
+  ["pa-IN","Punjabi — ਪੰਜਾਬੀ"],["ur-IN","Urdu — اردو"],
+  ["es-ES","Spanish (Spain)"],["es-MX","Spanish (Mexico)"],
+  ["fr-FR","French"],["de-DE","German"],["it-IT","Italian"],
+  ["pt-BR","Portuguese (BR)"],["ru-RU","Russian"],
+  ["ja-JP","Japanese — 日本語"],["ko-KR","Korean — 한국어"],
+  ["zh-CN","Chinese — 中文"],["ar-SA","Arabic — العربية"],
+  ["nl-NL","Dutch"],["tr-TR","Turkish"],["pl-PL","Polish"],
+  ["id-ID","Indonesian"],["th-TH","Thai — ไทย"],["vi-VN","Vietnamese"]
+];
+
+const SPK_COLORS = [
+  {c:"c0",d:"d0",s:"s0"},{c:"c1",d:"d1",s:"s1"},
+  {c:"c2",d:"d2",s:"s2"},{c:"c3",d:"d3",s:"s3"},
+  {c:"c4",d:"d4",s:"s4"},{c:"c5",d:"d5",s:"s5"}
+];
+
+// ---- state ----
+let dark = true, ptt = false, listening = false;
+let lang = "en-IN", numSpk = 2, activeSpk = 0;
+let segments = [], editingId = null;
+let sessionStart = 0, uttStart = null;
+let recog = null, audioCtx = null, analyser = null, stream = null, rafId = null;
+let level = 0;
+
+// ---- init ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  document.getElementById("unsupported").style.display = "flex";
+  document.getElementById("app").style.display = "none";
+}
+
+// populate language select
+const langSel = document.getElementById("langSel");
+LANGS.forEach(([code, label]) => {
+  const o = document.createElement("option");
+  o.value = code; o.textContent = label;
+  if (code === lang) o.selected = true;
+  langSel.appendChild(o);
+});
+langSel.addEventListener("change", e => { lang = e.target.value; if (listening) restartRecog(); });
+
+// speakers count
+const spkCount = document.getElementById("spkCount");
+spkCount.addEventListener("change", e => {
+  numSpk = +e.target.value;
+  if (activeSpk >= numSpk) { activeSpk = 0; }
+  renderSpkPicker();
+});
+
+// theme
+document.getElementById("themeBtn").addEventListener("click", () => {
+  dark = !dark;
+  document.body.classList.toggle("light", !dark);
+  const icon = document.getElementById("themeIcon");
+  icon.innerHTML = dark
+    ? `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`
+    : `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`;
+});
+
+// mode toggle
+const modeBtn = document.getElementById("modeBtn");
+modeBtn.addEventListener("click", () => {
+  if (listening) stopListening();
+  ptt = !ptt;
+  modeBtn.classList.toggle("active", ptt);
+  document.getElementById("modeBtnLabel").textContent = ptt ? "Push-to-talk" : "Continuous";
+  updateMainBtn();
+});
+
+// main button
+const mainBtn = document.getElementById("mainBtn");
+mainBtn.addEventListener("click", () => { if (!ptt) listening ? stopListening() : startListening(); });
+mainBtn.addEventListener("mousedown", () => { if (ptt) startListening(); });
+mainBtn.addEventListener("mouseup", () => { if (ptt) stopListening(); });
+mainBtn.addEventListener("mouseleave", () => { if (ptt && listening) stopListening(); });
+mainBtn.addEventListener("touchstart", e => { if (ptt) { e.preventDefault(); startListening(); } });
+mainBtn.addEventListener("touchend", e => { if (ptt) { e.preventDefault(); stopListening(); } });
+
+// ---- mic meter ----
+const NUM_BARS = 20;
+const meter = document.getElementById("meter");
+const bars = [];
+for (let i = 0; i < NUM_BARS; i++) {
+  const b = document.createElement("div");
+  b.className = "bar";
+  meter.appendChild(b);
+  bars.push(b);
+}
+
+function renderMeter() {
+  bars.forEach((b, i) => {
+    const threshold = i / NUM_BARS;
+    const on = listening && level > threshold * 0.9;
+    const base = 6 + Math.round((i % 6) * 1.5);
+    const h = on ? Math.min(34, base + Math.round(level * 26)) : base;
+    b.style.height = h + "px";
+    b.classList.toggle("on", on);
+  });
+}
+
+async function startMeter() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    function tick() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(data);
+      let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i];
+      level = Math.min(1, (sum / data.length) / 85);
+      renderMeter();
+      rafId = requestAnimationFrame(tick);
+    }
+    tick();
+  } catch (e) { /* mic denied - transcription may still fire from recognizer */ }
+}
+
+function stopMeter() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+  analyser = null;
+  level = 0;
+  renderMeter();
+}
+
+// ---- recognition ----
+function buildRecog() {
+  const r = new SR();
+  r.continuous = true;
+  r.interimResults = true;
+  r.lang = lang;
+  r.maxAlternatives = 1;
+
+  r.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      const txt = res[0].transcript;
+      if (uttStart === null) uttStart = Date.now() - sessionStart;
+      if (res.isFinal) {
+        const clean = txt.trim();
+        if (clean) {
+          const endMs = Date.now() - sessionStart;
+          const startMs = uttStart ?? Math.max(0, endMs - 1500);
+          segments.push({ id: Date.now() + Math.random(), speaker: activeSpk, text: clean, startMs, endMs });
+          uttStart = null;
+          renderSegments();
+          updateStats();
+          updateExports();
+          scrollBottom();
+        }
+      } else {
+        interim += txt;
+      }
+    }
+    showInterim(interim);
+  };
+
+  r.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      alert("Microphone access denied. Please allow microphone access and reload.");
+      stopListening();
+    }
+  };
+
+  r.onend = () => {
+    if (listening) { try { r.start(); } catch(e) {} }
+    else { showInterim(""); }
+  };
+
+  return r;
+}
+
+function startListening() {
+  if (listening) return;
+  listening = true;
+  if (!sessionStart) sessionStart = Date.now();
+  uttStart = null;
+  recog = buildRecog();
+  try { recog.start(); } catch(e) {}
+  startMeter();
+  updateMainBtn();
+}
+
+function stopListening() {
+  listening = false;
+  if (recog) { try { recog.stop(); } catch(e) {} recog = null; }
+  showInterim("");
+  stopMeter();
+  updateMainBtn();
+}
+
+function restartRecog() {
+  if (!recog) return;
+  recog.onend = null;
+  try { recog.stop(); } catch(e) {}
+  setTimeout(() => {
+    if (!listening) return;
+    recog = buildRecog();
+    try { recog.start(); } catch(e) {}
+  }, 200);
+}
+
+// ---- UI helpers ----
+function updateMainBtn() {
+  const lbl = document.getElementById("mainBtnLabel");
+  if (ptt) {
+    mainBtn.className = "btn-main" + (listening ? " ptt-hold" : "");
+    lbl.textContent = listening ? "Listening…" : "Hold to Talk";
+  } else {
+    mainBtn.className = "btn-main" + (listening ? " stop" : "");
+    lbl.textContent = listening ? "Stop" : "Start Listening";
+  }
+}
+
+function renderSpkPicker() {
+  const picker = document.getElementById("spkPicker");
+  picker.innerHTML = "";
+  for (let i = 0; i < numSpk; i++) {
+    const col = SPK_COLORS[i];
+    const btn = document.createElement("button");
+    btn.className = "spk-chip " + col.c + (i === activeSpk ? " active " + col.s : "");
+    btn.innerHTML = `<span class="dot ${col.d}"></span> Speaker ${i+1}`;
+    btn.addEventListener("click", () => { activeSpk = i; renderSpkPicker(); });
+    picker.appendChild(btn);
+  }
+}
+renderSpkPicker();
+
+function fmtClock(ms) {
+  const t = Math.max(0, Math.floor(ms / 1000));
+  return [Math.floor(t/3600), Math.floor((t%3600)/60), t%60].map(v => String(v).padStart(2,"0")).join(":");
+}
+function fmtSrt(ms) {
+  const t = Math.max(0, Math.floor(ms));
+  const h = String(Math.floor(t/3600000)).padStart(2,"0");
+  const m = String(Math.floor((t%3600000)/60000)).padStart(2,"0");
+  const s = String(Math.floor((t%60000)/1000)).padStart(2,"0");
+  const mil = String(t%1000).padStart(3,"0");
+  return `${h}:${m}:${s},${mil}`;
+}
+function spkName(i) { return `Speaker ${i+1}`; }
+
+let editText = "";
+function renderSegments() {
+  const list = document.getElementById("segList");
+  const empty = document.getElementById("emptyState");
+  empty.style.display = segments.length ? "none" : "flex";
+
+  list.innerHTML = "";
+  segments.forEach(seg => {
+    const col = SPK_COLORS[seg.speaker];
+    const div = document.createElement("div");
+    div.className = "seg";
+    div.dataset.id = seg.id;
+
+    if (editingId === seg.id) {
+      div.innerHTML = `
+        <button class="seg-label ${col.s} ${col.c}" onclick="cycleSpeaker(${seg.id})">
+          <span class="dot ${col.d}"></span> S${seg.speaker+1}
+        </button>
+        <div class="seg-body">
+          <textarea class="edit-area" rows="2" id="ea_${seg.id}">${seg.text}</textarea>
+          <div class="edit-btns">
+            <button class="save-btn" onclick="saveEdit(${seg.id})">✓ Save</button>
+            <button class="cancel-btn" onclick="cancelEdit()">✕ Cancel</button>
+          </div>
+        </div>`;
+    } else {
+      div.innerHTML = `
+        <button class="seg-label ${col.s} ${col.c}" onclick="cycleSpeaker(${seg.id})" title="Click to change speaker">
+          <span class="dot ${col.d}"></span> S${seg.speaker+1}
+        </button>
+        <div class="seg-body">
+          <span class="seg-text">${escHtml(seg.text)}<span class="seg-time">${fmtClock(seg.startMs)}</span></span>
+        </div>
+        <div class="seg-actions">
+          <button title="Edit" onclick="beginEdit(${seg.id})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+          <button class="del-btn" title="Delete" onclick="deleteSeg(${seg.id})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+        </div>`;
+    }
+    list.appendChild(div);
+  });
+}
+
+function showInterim(text) {
+  const line = document.getElementById("interimLine");
+  const col = SPK_COLORS[activeSpk];
+  if (text) {
+    document.getElementById("interimLabel").className = `seg-label ${col.s} ${col.c}`;
+    document.getElementById("interimLabel").innerHTML = `<span class="dot ${col.d}"></span> S${activeSpk+1}`;
+    document.getElementById("interimDot").className = `dot-pulse ${col.d}`;
+    document.getElementById("interimText").textContent = text;
+    line.style.display = "flex";
+  } else {
+    line.style.display = "none";
+  }
+  scrollBottom();
+}
+
+function scrollBottom() {
+  const t = document.getElementById("transcript");
+  t.scrollTop = t.scrollHeight;
+}
+
+function updateStats() {
+  const words = segments.reduce((a, s) => a + s.text.split(/\s+/).filter(Boolean).length, 0);
+  let html = `${segments.length} lines · ${words} words`;
+  if (segments.length) html += ` <button onclick="clearAll()">Clear</button>`;
+  document.getElementById("stats").innerHTML = html;
+}
+
+function updateExports() {
+  const has = segments.length > 0;
+  ["copyBtn","txtBtn","srtBtn","mdBtn"].forEach(id => document.getElementById(id).disabled = !has);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ---- segment actions ----
+window.cycleSpeaker = id => {
+  const seg = segments.find(s => s.id === id);
+  if (seg) { seg.speaker = (seg.speaker + 1) % numSpk; renderSegments(); }
+};
+window.beginEdit = id => {
+  const seg = segments.find(s => s.id === id);
+  if (seg) { editingId = id; renderSegments(); setTimeout(() => { const el = document.getElementById(`ea_${id}`); if(el) el.focus(); }, 50); }
+};
+window.saveEdit = id => {
+  const el = document.getElementById(`ea_${id}`);
+  if (el) {
+    const txt = el.value.trim();
+    if (txt) { const seg = segments.find(s => s.id === id); if (seg) seg.text = txt; }
+    else segments = segments.filter(s => s.id !== id);
+  }
+  editingId = null;
+  renderSegments(); updateStats(); updateExports();
+};
+window.cancelEdit = () => { editingId = null; renderSegments(); };
+window.deleteSeg = id => { segments = segments.filter(s => s.id !== id); renderSegments(); updateStats(); updateExports(); };
+window.clearAll = () => { segments = []; editingId = null; sessionStart = 0; renderSegments(); updateStats(); updateExports(); showInterim(""); };
+
+// ---- exports ----
+function plainText() { return segments.map(s => `${spkName(s.speaker)}: ${s.text}`).join("\n"); }
+function toMarkdown() {
+  const d = new Date().toLocaleString();
+  return `# Transcript\n\n*Generated ${d}*\n\n` + segments.map(s => `**${spkName(s.speaker)}** \`[${fmtClock(s.startMs)}]\`: ${s.text}`).join("\n\n");
+}
+function toSrt() {
+  return segments.map((s, i) => `${i+1}\n${fmtSrt(s.startMs)} --> ${fmtSrt(s.endMs)}\n${spkName(s.speaker)}: ${s.text}\n`).join("\n");
+}
+function download(content, name, mime) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+  a.download = name; a.click();
+}
+
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(plainText()).catch(() => {});
+  const lbl = document.getElementById("copyLabel");
+  lbl.textContent = "Copied!";
+  setTimeout(() => lbl.textContent = "Copy", 1500);
+});
+document.getElementById("txtBtn").addEventListener("click", () => download(plainText(), "transcript.txt", "text/plain"));
+document.getElementById("srtBtn").addEventListener("click", () => download(toSrt(), "transcript.srt", "text/plain"));
+document.getElementById("mdBtn").addEventListener("click", () => download(toMarkdown(), "transcript.md", "text/markdown"));
+
+// init render
+renderSegments(); updateStats(); updateExports(); updateMainBtn();
+</script>
+</body>
+</html>
